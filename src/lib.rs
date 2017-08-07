@@ -1,4 +1,4 @@
-pub mod router;
+pub mod server;
 
 #[cfg(test)]
 mod tests {
