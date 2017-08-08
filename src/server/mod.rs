@@ -10,7 +10,16 @@ use std::net::{TcpStream, TcpListener};
 use std::thread;
 use self::regex::Regex;
 
-type RouterAction = Box<(Fn(Response) -> ())>;
+pub trait RouterAction: Send + Sync + 'static {
+    fn call(&self, Response) -> ();
+}
+
+impl<T>RouterAction for T 
+where T: Fn(Response) -> () + Send + Sync + 'static {
+    fn call(&self, response: Response) -> () {
+        (&self)(response);
+    }
+}
 
 pub struct Response {
     route: String,
@@ -41,7 +50,7 @@ impl Response {
 }
 
 pub struct Server {
-    routes: HashMap<String, HashMap<String, RouterAction>>,
+    routes: HashMap<String, HashMap<String, Box<RouterAction>>>,
 }
 
 impl Server {
@@ -60,12 +69,12 @@ impl Server {
     /// * `ACTION` as the closure/function that will be called on a successful route.
     ///
     /// *example*: `route("GET", "/dogs", dog_get)`
-    pub fn route(&mut self, method: String, path: String, action: RouterAction) {
+    pub fn route<T: RouterAction>(&mut self, method: String, path: String, action: T) {
         let mut method_storage = self.routes.entry(method).or_insert(HashMap::new());
-        method_storage.insert(path, action);
+        method_storage.insert(path, Box::new(action));
     }
 
-    pub fn parse_incoming<Sync>(&self, stream: &mut TcpStream) -> Result<Response, Error> {
+    pub fn parse_incoming(&self, stream: &mut TcpStream) -> Result<Response, Error> {
         let mut buf = vec![0];
 
         stream.read(&mut buf)?;
@@ -73,15 +82,12 @@ impl Server {
         Ok(response)
     }
 
-    pub fn listen(&self, port: i16, address: Option<String>) {
+    pub fn listen(self, port: i16, address: Option<String>) {
         let address = address.unwrap_or(String::from("127.0.0.1"));
         let binding = TcpListener::bind(format!("{}:{}", address, port))
             .expect("Couldn't bind on port!");
         let pool = thread_pool::ThreadPool::new(8);
-
-        let shared_self = Arc::new(&self);
-
-
+        let shared_self = Arc::new(self);
 
         for stream in binding.incoming() {
             let mut stream = match stream {
