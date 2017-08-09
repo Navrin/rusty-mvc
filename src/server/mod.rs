@@ -1,5 +1,6 @@
 extern crate regex;
 mod thread_pool;
+mod response;
 
 use std::collections::HashMap;
 use std::io::prelude::*;
@@ -8,7 +9,9 @@ use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
 use std::net::{TcpStream, TcpListener};
 use std::thread;
+use self::response::Response;
 use self::regex::Regex;
+
 
 pub trait RouterAction: Send + Sync + 'static {
     fn call(&self, Response) -> ();
@@ -18,34 +21,6 @@ impl<T>RouterAction for T
 where T: Fn(Response) -> () + Send + Sync + 'static {
     fn call(&self, response: Response) -> () {
         (&self)(response);
-    }
-}
-
-pub struct Response {
-    route: String,
-    action: String,
-    headers: HashMap<String, String>,
-    query: HashMap<String, String>,
-    raw: Vec<u8>,
-}
-
-impl Response {
-    pub fn new(stream: Vec<u8>) -> Result<Response, Error> {
-        let stream_clone = stream.clone();
-
-        let stream_as_string = String::from_utf8_lossy(&stream_clone);
-
-        Ok(Response {
-            route: String::from("hello"),
-            action: String::from("hello"),
-            headers: HashMap::new(),
-            query: HashMap::new(),
-            raw: stream,
-        })
-    }
-
-    fn get_route(body: &str) -> String {
-        "/get".to_string()
     }
 }
 
@@ -74,25 +49,29 @@ impl Server {
         method_storage.insert(path, Box::new(action));
     }
 
-    pub fn parse_incoming(&self, stream: &mut TcpStream) -> Result<Response, Error> {
-        let mut buf = vec![0];
+    pub fn parse_incoming(&self, mut stream: &mut TcpStream) -> Result<Response, Error> {
+        let mut response = Response::new(&mut stream)?;
 
-        stream.read(&mut buf)?;
-        let response = Response::new(buf)?;
+        println!("{}", response.raw);
+        println!("Response ended.");
+
         Ok(response)
     }
 
-    pub fn listen(self, port: i16, address: Option<String>) {
+    /// Attaches the server to a port with an optional address (default loopback address IPV4)
+    /// 
+    /// # Panics if the post is closed or any other connection issue.
+    pub fn listen(self, port: i16, address: Option<String>, threads: Option<usize>) {
         let address = address.unwrap_or(String::from("127.0.0.1"));
         let binding = TcpListener::bind(format!("{}:{}", address, port))
             .expect("Couldn't bind on port!");
-        let pool = thread_pool::ThreadPool::new(8);
+        let pool = thread_pool::ThreadPool::new(threads.unwrap_or(4));
         let shared_self = Arc::new(self);
 
-        for stream in binding.incoming() {
+        for mut stream in binding.incoming() {
             let mut stream = match stream {
                 Ok(v) => v,
-                Err(_) => continue,   
+                Err(_) => continue,  // TODO: Redirect to internal server error page.
             };
 
             let self_clone = shared_self.clone();
