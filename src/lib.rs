@@ -1,7 +1,8 @@
-pub mod server;
+//! # Provides an express-like format for rust servers.
+//!
+//! This is a learning project, expanding on the last chapter of the book.
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {}
-}
+pub mod server;
+pub use server::Server;
+pub use server::router;
+pub use server::request;

@@ -1,5 +1,5 @@
 [package]
-name = "rusty-mvc"
+name = "rusty_mvc"
 version = "0.1.0"
 authors = ["Navrin <navman360@gmail.com>"]
 
@@ -10,6 +10,6 @@ regex="0.2.2"
 name = "rusty_mvc"
 path = "src/lib.rs"
 
-[[bin]]
-name = "rusty_mvc_test"
-path = "src/bin.rs"
+# [[bin]]
+# name = "rusty_mvc_test"
+# path = "src/bin.rs"

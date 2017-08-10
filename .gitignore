@@ -1,3 +1,7 @@
 /target/
 **/*.rs.bk
 Cargo.lock
+/rusty-test/target/doc
+/rusty-mvc/target/doc
+rusty-test/target/
+rusty-test/target/debug/rusty-test
