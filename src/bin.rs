@@ -5,9 +5,20 @@ mod server;
 fn main() {
     let mut server = Server::new();
     
-    server.route("GET".to_string(), "/".to_string(), | bep | {
+    server.route("GET", "/", | bep | {
         println!("Hello!");
     });
+
+    server.get("/bep", | bep | {
+        println!("Hi");
+    });
+
+    server.route("GET", "/", | bep | {
+        println!("Hi");
+    });
+
+    server.get("/a", | test | {})
+          .post("/ext", | test | {});
 
     server.listen(3030, None, None);
 }

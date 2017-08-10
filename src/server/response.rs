@@ -1,9 +1,10 @@
 use std::collections::HashMap;
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::io::prelude::*;
+use std::io::BufReader;
 use std::net::TcpStream;
 
-
+#[derive(Debug)]
 pub struct Response {
     pub route: String,
     pub action: String,
@@ -14,30 +15,46 @@ pub struct Response {
 
 impl Response {
     pub fn new(stream: &mut TcpStream) -> Result<Response, Error> {
-        let mut buf = Vec::new();
+        let mut buf = String::new();
 
-        stream.read(&mut buf)?;
+        loop {
+            let mut buffer = vec![0; 256];
+            stream.read(&mut buffer).unwrap();
+
+            let buf_as_string = String::from_utf8_lossy(&mut buffer);
+            let polished_buffer = buf_as_string.trim_matches('\u{0}');
+            buf.push_str(polished_buffer);
+
+            if buf_as_string.contains('\u{0}') {
+                break;
+            }
+        }
 
         let buf_clone = buf.clone();
-        let buf_as_string = String::from_utf8_lossy(&buf_clone);
+        let mut lines = buf_clone.lines();
 
+        let first = match lines.next() {
+            Some(v) => v,
+            None => return Err(Error::new(ErrorKind::InvalidInput, "Malformed Input")),
+        };
 
-        let ok = "HTTP/1.1 200 OK\r\n";
-        let h = "<html> <head></head> <body> hi </body> </html>";
-        let res = format!("{}{}", ok, h);
-
-        stream.write(res.as_bytes());
+        // let (action, route) = Response::parse_route(first)?;
 
         Ok(Response {
-            route: String::from("hello"),
-            action: String::from("hello"),
+            route: "hi".to_string(),
+            action: "hi".to_string(),
             headers: HashMap::new(),
             query: HashMap::new(),
-            raw: buf_as_string.to_string(),
+            raw: buf,
         })
     }
 
-    fn get_route(body: &str) -> String {
-        "/get".to_string()
-    }
+    // fn parse_route(query: &str) -> Result<(String, String), Error> {
+    //     let mut req = query.split_whitespace();
+    //     let iters = req.take(2).collect();
+        
+    //     Ok((
+    //         iters
+    //     ))
+    // }
 }
