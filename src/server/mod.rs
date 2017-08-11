@@ -34,8 +34,7 @@ impl Server {
     // Parsing!
     pub fn parse_incoming(&self, mut stream: &mut TcpStream) -> Result<Request, Error> {
         let request = Request::new(&mut stream)?;
-
-        println!("{:?}", request.raw);
+        println!("{}", request);
         println!("request ended.");
 
         Ok(request)

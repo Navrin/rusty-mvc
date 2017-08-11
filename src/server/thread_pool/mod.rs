@@ -86,7 +86,7 @@ impl Worker {
 
             match message {
                 Message::NewJob(job) => {
-                    println!("Worker {} got a job; executing!", id);
+                    // println!("Worker {} got a job; executing!", id);
 
                     job.call_box();
                 }
