@@ -48,7 +48,7 @@ impl ThreadPool {
 
     pub fn execute<F>(&self, f: F)
     where
-        F: FnOnce() + Send + 'static
+        F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
 
@@ -86,8 +86,6 @@ impl Worker {
 
             match message {
                 Message::NewJob(job) => {
-                    // println!("Worker {} got a job; executing!", id);
-
                     job.call_box();
                 }
                 Message::Terminate => {

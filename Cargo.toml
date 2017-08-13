@@ -1,15 +1,10 @@
 [package]
-name = "rusty_mvc"
+name = "rusty_server"
 version = "0.1.0"
 authors = ["Navrin <navman360@gmail.com>"]
 
 [dependencies]
-regex="0.2.2"
 
 [lib]
-name = "rusty_mvc"
+name = "rusty_server"
 path = "src/lib.rs"
-
-# [[bin]]
-# name = "rusty_mvc_test"
-# path = "src/bin.rs"

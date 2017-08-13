@@ -1,8 +1,9 @@
-extern crate regex;
-
 use std::collections::HashMap;
 use std::string::ToString;
+use std::io::{Error, ErrorKind};
+use std::sync::Arc;
 use server::request::Request;
+use server::response::Response;
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub enum Methods {
@@ -40,20 +41,20 @@ impl RouterMethod for Methods {
 }
 
 pub trait RouterAction: Send + Sync + 'static {
-    fn call(&self, Request) -> ();
+    fn call(&self, Request, Response) -> ();
 }
 
 impl<T> RouterAction for T
 where
-    T: Fn(Request) -> () + Send + Sync + 'static,
+    T: Fn(Request, Response) -> () + Send + Sync + 'static,
 {
-    fn call(&self, request: Request) -> () {
-        (&self)(request);
+    fn call(&self, request: Request, response: Response) -> () {
+        (&self)(request, response);
     }
 }
 
 pub struct Router {
-    pub routes: HashMap<Methods, HashMap<String, Box<RouterAction>>>,
+    pub routes: HashMap<Methods, HashMap<String, Arc<RouterAction>>>,
 }
 
 impl Router {
@@ -78,12 +79,53 @@ impl Router {
         P: ToString,
         M: RouterMethod,
     {
-        let method = method.parse();
         self.routes
-            .entry(method)
+            .entry(method.parse())
             .or_insert(HashMap::new())
-            .insert(path.to_string(), Box::new(action));
+            .insert(path.to_string(), Arc::new(action));
         self
+    }
+
+
+    /// Searches the routers for the correct path, finding the action for the path.
+    /// It also finds params within the url, like `dog/:id/`.
+    pub fn find_route(
+        &self,
+        method: String,
+        path: String,
+    ) -> Result<(Arc<RouterAction>, HashMap<String, String>), Error> {
+        let routes = self.routes.get(&method.parse());
+
+        let routes = match routes {
+            Some(v) => v,
+            None => return Err(Error::new(ErrorKind::NotFound, "404")),
+        };
+
+        let split_path = path.to_string();
+        let split_path = split_path.split('/').collect::<Vec<&str>>();
+
+        for (route, method) in routes.iter() {
+            let template = route.split('/').collect::<Vec<&str>>();
+            let mut params: HashMap<String, String> = HashMap::new();
+
+            if template.iter().zip(&split_path).all(
+                |(templ_seg, path_seg)| {
+                    if templ_seg.contains(':') {
+                        params.insert(
+                            templ_seg.trim_matches(':').to_string(),
+                            path_seg.to_string(),
+                        );
+                        return true;
+                    }
+                    templ_seg == path_seg
+                },
+            ) {
+                let method_copy = method.clone();
+                return Ok((method_copy, params));
+            }
+        }
+
+        Err(Error::new(ErrorKind::NotFound, "404"))
     }
 
     /// # Shorthand methods. .get instead of .route("GET")

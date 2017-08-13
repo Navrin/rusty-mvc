@@ -6,3 +6,4 @@ pub mod server;
 pub use server::Server;
 pub use server::router;
 pub use server::request;
+pub use server::response;

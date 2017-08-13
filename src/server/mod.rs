@@ -1,43 +1,91 @@
 pub mod router;
 pub mod request;
+pub mod response;
 mod thread_pool;
 
+
 use std::net::{TcpListener, TcpStream};
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 use self::request::Request;
-use self::router::Router;
+use self::router::{Router, RouterAction};
+use self::response::Response;
+
+pub struct ServerInner {
+    inner_routers: Mutex<HashMap<String, Router>>,
+}
 
 pub struct Server {
-    inner_routers: Arc<Mutex<HashMap<String, Router>>>,
+    inner: Arc<ServerInner>,
 }
 
 impl Server {
     pub fn new() -> Server {
         Server {
-            inner_routers: Arc::new(Mutex::new(HashMap::new())),
+            inner: Arc::new(ServerInner { 
+                inner_routers: Mutex::new(HashMap::new()),
+            }),
         }
     }
 
     /// Registers a new router for the server.
     pub fn register<T: ToString>(&mut self, path: T, router: Router) -> &mut Server {
-        let inner = self.inner_routers.clone();
+        let inner = self.inner.clone();
+        let mut routers = inner.inner_routers.lock().expect("Could not lock!");
+        let empty_path = "/".to_string();
 
-        let mut internal_router = inner.lock().expect("Could not lock routers!");
-        internal_router.insert(path.to_string(), router);
+        let path = if path.to_string() == empty_path {
+            "".to_string()
+        } else {
+            path.to_string()
+        };
+
+        routers.insert(path, router);
 
         self
     }
 
     // Parsing!
-    pub fn parse_incoming(&self, mut stream: &mut TcpStream) -> Result<Request, Error> {
-        let request = Request::new(&mut stream)?;
-        println!("{}", request);
-        println!("request ended.");
+    pub fn parse_incoming(&self, mut stream: &mut TcpStream) -> Result<(), Error> {
+        let mut request = Request::new(&mut stream)?;
+        let (method, params) = self.find_route(&request.method, &request.route)?;
+        if params.len() > 0 {
+            request.params = Some(params);
+        }
 
-        Ok(request)
+        let stream_copy = stream.try_clone().unwrap();
+        let response = Response::new(stream_copy);
+        
+        method.call(request, response);
+        Ok(())
+    }
+
+    // finds the specified route's action
+    pub fn find_route(&self, method: &String, path: &String) -> Result<(Arc<RouterAction>, HashMap<String, String>), Error> {
+        let inner = self.inner.clone();
+        let inner = inner.inner_routers.lock();
+        let routers = match inner {
+            Ok(v) => v,
+            _ => return Err(Error::new(ErrorKind::Other, "Lock Error")), 
+        };
+
+        let routers = routers.iter();
+
+        for (routing, router) in routers {
+            let routing = routing.to_string();
+            if path.trim_left().starts_with(&routing) {
+                let (method, params) = router.find_route(
+                    method.to_string(),
+                    path.trim_left_matches(&routing).to_string(),
+                )?;
+    
+                return Ok((method, params));
+            }
+        }
+
+        return Err(Error::new(ErrorKind::NotFound, "404"));
     }
 
     /// Attaches the Router to a port with an optional address (default loopback address IPV4)

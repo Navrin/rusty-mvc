@@ -4,4 +4,4 @@ version = "0.1.0"
 authors = ["Navrin <navman360@gmail.com>"]
 
 [dependencies]
-rusty_mvc = { path = "../../rusty-mvc" }
+rusty_server = { path = "../../rusty-server" }
