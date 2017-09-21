@@ -5,6 +5,7 @@ use std::io::{Error, ErrorKind};
 use std::sync::{Arc, Mutex};
 use server::request::Request;
 use server::response::Response;
+use server::session::{Session, Sessionable};
 use server::middleware::{MiddlewareMethod, MiddlewareSession};
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -55,16 +56,17 @@ impl RouterMethod for Methods {
 //     }
 // }
 
-pub struct Router {
-    pub routes: HashMap<Methods, HashMap<String, Arc<Mutex<Vec<Box<MiddlewareMethod>>>>>>,
-    pub middlewares: Arc<Mutex<Vec<Box<MiddlewareMethod>>>>,
+pub struct Router<T: MiddlewareMethod> {
+    pub routes: HashMap<Methods, HashMap<String, Arc<Mutex<Session<T>>>>>,
+    pub middlewares: Arc<Mutex<Option<Session<T>>>>,
 }
-impl Router {
+
+impl<T: MiddlewareMethod> Router<T> {
     /// Creates a new instance of the Router.
-    pub fn new() -> Router {
+    pub fn new() -> Router<T> {
         Router {
             routes: HashMap::new(),
-            middlewares: Arc::new(Mutex::new(Vec::new())),
+            middlewares: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -76,9 +78,9 @@ impl Router {
     /// * `ACTION` as the closure/function that will be called on a successful route.
     ///
     /// *example*: `route("GET", "/dogs", dog_get)`
-    pub fn route<T, P, M>(&mut self, method: M, path: P, action: T) -> &mut Router
+    pub fn route<S, P, M>(&mut self, method: M, path: P, action: S) -> &mut Router<T>
     where
-        T: Sessions,
+        S: Sessionable<T>,
         P: ToString,
         M: RouterMethod,
     {
@@ -87,7 +89,7 @@ impl Router {
 
         self
     }
-    
+
     // pub fn register<T: MiddlewareMethod>(&mut self, middleware: T) -> &mut Router {
     //     let middlewares = self.middlewares.clone();
     //     let mut middlewares_ref = middlewares.try_lock().unwrap();
@@ -102,7 +104,7 @@ impl Router {
         &self,
         method: String,
         path: String,
-    ) -> Result<(Arc<Mutex<Vec<Box<MiddlewareMethod>>>>, HashMap<String, String>), Error> {
+    ) -> Result<(Arc<Mutex<Session<T>>>, HashMap<String, String>), Error> {
         let routes = self.routes.get(&method.parse());
 
         let routes = match routes {
@@ -130,6 +132,7 @@ impl Router {
                 },
             ) {
                 let method_copy = method.clone();
+
                 return Ok((method_copy, params));
             }
         }
@@ -138,23 +141,23 @@ impl Router {
     }
 
     /// # Shorthand methods. .get instead of .route("GET")
-    pub fn get<T: Sessions, S: ToString>(&mut self, path: S, action: T) -> &mut Router {
+    pub fn get<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
         self.route(Methods::GET, path, action)
     }
 
-    pub fn post<T: Sessions, S: ToString>(&mut self, path: S, action: T) -> &mut Router {
+    pub fn post<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
         self.route(Methods::POST, path, action)
     }
 
-    pub fn put<T: Sessions, S: ToString>(&mut self, path: S, action: T) -> &mut Router {
+    pub fn put<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
         self.route(Methods::PUT, path, action)
     }
 
-    pub fn patch<T: Sessions, S: ToString>(&mut self, path: S, action: T) -> &mut Router {
+    pub fn patch<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
         self.route(Methods::PATCH, path, action)
     }
 
-    pub fn delete<T: Sessions, S: ToString>(&mut self, path: S, action: T) -> &mut Router {
+    pub fn delete<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
         self.route(Methods::DELETE, path, action)
     }
 }

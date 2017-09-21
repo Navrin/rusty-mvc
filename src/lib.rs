@@ -8,3 +8,4 @@ pub use server::router;
 pub use server::request;
 pub use server::response;
 pub use server::middleware;
+pub use server::session;
