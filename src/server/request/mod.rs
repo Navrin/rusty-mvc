@@ -114,6 +114,21 @@ impl Request {
         })
     }
 
+    /// Searches for a param, if none is found, return None.
+    /// Easier than matching for the params existence, and then the 
+    /// existence of original param. 
+    pub fn find_param<T: ToString>(&mut self, param: T) -> Option<String> {
+        let param = param.to_string();
+        match self.params {
+            Some(ref p) => match p.get(&param) {
+                Some(v) => Some(v.to_string()),
+                None => None,
+            },
+            None => None
+        }
+    }
+
+
     /// Read the entire stream into a string
     /// TODO: Impl an request limit size to prevent overflow attacks.
     fn read_stream(stream: &mut TcpStream) -> String {
@@ -204,5 +219,16 @@ impl Request {
         }
 
         Some(queries)
+    }
+
+    pub fn find_query<T: ToString>(&self, query: T) -> Option<&str> {
+        let query = query.to_string();
+        match &self.params {
+            &Some(ref p) => match p.get(&query) {
+                Some(v) => return Some(v),
+                None => return None,
+            },
+            &None => return None,
+        }
     }
 }

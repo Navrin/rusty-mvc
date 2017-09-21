@@ -69,6 +69,7 @@ impl Response {
         self
     }
 
+    /// Sends the body payload to the stream response
     pub fn send<T: ToString>(&mut self, body: T) -> Result<&mut Response, Error> {
         let payload = self.create_response(body.to_string());
 

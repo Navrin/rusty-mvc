@@ -1,17 +1,21 @@
 pub mod router;
 pub mod request;
 pub mod response;
+pub mod middleware;
 mod thread_pool;
-
 
 use std::net::{TcpListener, TcpStream};
 use std::io::{Error, ErrorKind};
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::sync::mpsc::channel;
+use std::rc::{Rc};
+use std::cell::RefCell;
 
 use self::request::Request;
 use self::router::{Router, RouterAction};
 use self::response::Response;
+use self::middleware::{MiddlewareSession, MiddlewareMethod};
 
 pub struct ServerInner {
     inner_routers: Mutex<HashMap<String, Router>>,
@@ -50,16 +54,49 @@ impl Server {
     // Parsing!
     pub fn parse_incoming(&self, mut stream: &mut TcpStream) -> Result<(), Error> {
         let mut request = Request::new(&mut stream)?;
+        let wares = self.find_middlewares(&request.route);
+
         let (method, params) = self.find_route(&request.method, &request.route)?;
         if params.len() > 0 {
             request.params = Some(params);
         }
 
         let stream_copy = stream.try_clone().unwrap();
-        let response = Response::new(stream_copy);
-        
-        method.call(request, response);
+        let mut response = Response::new(stream_copy);
+
+        if let Some(wares) = wares {
+            for middleware in wares.try_lock().unwrap().iter() {
+                // let req = request_rc.clone();
+                // let res = response_rc.clone();
+                let (send, revc) = channel::<bool>();
+                let session = MiddlewareSession::new(send);
+
+                middleware.call(&request , &mut response, session);
+            }
+        }
+
+        method.call(&request, &mut response);
         Ok(())
+    }
+
+    fn find_middlewares(&self, path: &String) -> Option<Arc<Mutex<Vec<Box<MiddlewareMethod>>>>> {
+        let inner = self.inner.clone();
+        let inner = inner.inner_routers.lock();
+        let routers = match inner {
+            Ok(v) => v,
+            _ => return None, 
+        };
+        let routers = routers.iter();
+
+        for (routing, router) in routers {
+            let routing = routing.to_string();
+            if path.trim_left().starts_with(&routing) {
+                let middlewares = &router.middlewares.clone();
+                return Some(middlewares.clone());
+            }
+        }
+
+        return None;
     }
 
     // finds the specified route's action
@@ -68,7 +105,7 @@ impl Server {
         let inner = inner.inner_routers.lock();
         let routers = match inner {
             Ok(v) => v,
-            _ => return Err(Error::new(ErrorKind::Other, "Lock Error")), 
+            _ => return Err(Error::new(ErrorKind::NotFound, "404")), 
         };
 
         let routers = routers.iter();
