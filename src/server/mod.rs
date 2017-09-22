@@ -7,7 +7,7 @@ mod thread_pool;
 
 use std::net::{TcpListener, TcpStream};
 use std::io::{Error, ErrorKind};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use std::sync::mpsc::channel;
 use std::rc::Rc;
@@ -20,7 +20,7 @@ use self::middleware::{MiddlewareMethod, MiddlewareSession};
 use self::session::Session;
 
 pub struct ServerInner<T: MiddlewareMethod> {
-    inner_routers: Mutex<HashMap<String, Router<T>>>,
+    inner_routers: RwLock<HashMap<String, Router<T>>>,
 }
 
 pub struct Server<T: MiddlewareMethod> {
@@ -31,7 +31,7 @@ impl<T: MiddlewareMethod> Server<T> {
     pub fn new() -> Server<T> {
         Server {
             inner: Arc::new(ServerInner {
-                inner_routers: Mutex::new(HashMap::new()),
+                inner_routers: RwLock::new(HashMap::new()),
             }),
         }
     }
@@ -39,7 +39,7 @@ impl<T: MiddlewareMethod> Server<T> {
     /// Registers a new router for the server.
     pub fn register<S: ToString>(&mut self, path: S, router: Router<T>) -> &mut Server<T> {
         let inner = self.inner.clone();
-        let mut routers = inner.inner_routers.lock().expect("Could not lock!");
+        let mut routers = inner.inner_routers.write().expect("Could not lock!");
         let empty_path = "/".to_string();
 
         let path = if path.to_string() == empty_path {
@@ -66,13 +66,22 @@ impl<T: MiddlewareMethod> Server<T> {
         let stream_copy = stream.try_clone().unwrap();
         let mut response = Response::new(stream_copy);
 
+        let path_wares_rw = path_wares.clone();
+        let path_wares_ref = path_wares_rw.try_read().unwrap();
+
+        let then_path_rw = path_wares_ref.then.clone();
+        let then_path_ref = then_path_rw.try_read().unwrap();
+
+        for ware in then_path_ref.iter() {
+            let (send, revc) = channel::<bool>();
+            let session = MiddlewareSession::new(send);
+            ware.call(&request, &mut response, session);
+        }
+
         // let session = path_wares.clone().try_lock().unwrap();
         // let wares = session.wares.clone();
 
         // for middleware in wares {
-        //         // let req = request_rc.clone();
-        //         // let res = response_rc.clone();
-        //         let (send, revc) = channel::<bool>();
         //         let session = MiddlewareSession::new(send);
 
         //         middleware.call(&request , &mut response, session);
@@ -81,9 +90,9 @@ impl<T: MiddlewareMethod> Server<T> {
         Ok(())
     }
 
-    fn find_middlewares(&self, path: &String) -> Option<Arc<Mutex<Option<Session<T>>>>> {
+    fn find_middlewares(&self, path: &String) -> Option<Arc<RwLock<Option<Session<T>>>>> {
         let inner = self.inner.clone();
-        let inner = inner.inner_routers.lock();
+        let inner = inner.inner_routers.try_read();
         let routers = match inner {
             Ok(v) => v,
             _ => return None,
@@ -91,9 +100,12 @@ impl<T: MiddlewareMethod> Server<T> {
         let routers = routers.iter();
 
         for (routing, router) in routers {
+            let router_rw = router.inner.clone();
+            let router_ref = router_rw.try_read().unwrap();
+
             let routing = routing.to_string();
             if path.trim_left().starts_with(&routing) {
-                let middlewares = router.middlewares.clone();
+                let middlewares =  router_ref.middlewares.clone();
                 return Some(middlewares);
             }
         }
@@ -106,9 +118,9 @@ impl<T: MiddlewareMethod> Server<T> {
         &self,
         method: &String,
         path: &String,
-    ) -> Result<(Arc<Mutex<Session<T>>>, HashMap<String, String>), Error> {
+    ) -> Result<(Arc<RwLock<Session<T>>>, HashMap<String, String>), Error> {
         let inner = self.inner.clone();
-        let inner = inner.inner_routers.lock();
+        let inner = inner.inner_routers.try_read();
         let routers = match inner {
             Ok(v) => v,
             _ => return Err(Error::new(ErrorKind::NotFound, "404")),

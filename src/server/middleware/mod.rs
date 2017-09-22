@@ -41,17 +41,3 @@ impl MiddlewareSession {
         self.invoker.send(false);
     }
 }
-
-mod test {
-    use server::Server;
-    use server::router::Router;
-
-    #[test]
-    fn test() {
-        let mut server = Server::new();
-        let mut router = Router::new();
-        router.register(| _, _, session: MiddlewareSession | {
-            session.terminate();
-        });
-    }
-}

@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::iter::Iterator;
 use std::string::ToString;
+use std::cell::RefCell;
 use std::io::{Error, ErrorKind};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use server::request::Request;
 use server::response::Response;
 use server::session::{Session, Sessionable};
@@ -56,17 +57,23 @@ impl RouterMethod for Methods {
 //     }
 // }
 
+pub struct InnerRouter<T: MiddlewareMethod> {
+    pub routes: HashMap<Methods, HashMap<String, Arc<RwLock<Session<T>>>>>,
+    pub middlewares: Arc<RwLock<Option<Session<T>>>>,
+}
+
 pub struct Router<T: MiddlewareMethod> {
-    pub routes: HashMap<Methods, HashMap<String, Arc<Mutex<Session<T>>>>>,
-    pub middlewares: Arc<Mutex<Option<Session<T>>>>,
+    pub inner: Arc<RwLock<InnerRouter<T>>>,
 }
 
 impl<T: MiddlewareMethod> Router<T> {
     /// Creates a new instance of the Router.
     pub fn new() -> Router<T> {
         Router {
-            routes: HashMap::new(),
-            middlewares: Arc::new(Mutex::new(None)),
+            inner: Arc::new(RwLock::new(InnerRouter {
+                routes: HashMap::new(),
+                middlewares: Arc::new(RwLock::new(None)),
+            })),
         }
     }
 
@@ -84,8 +91,14 @@ impl<T: MiddlewareMethod> Router<T> {
         P: ToString,
         M: RouterMethod,
     {
-        let mut routes = self.routes.entry(method.parse()).or_insert(HashMap::new());
-        let set = routes.get(&path.to_string());
+        let mut self_mutex = self.inner.clone();
+        let mut self_ref = self_mutex.write().unwrap();
+        let mut routes = self_ref
+            .routes
+            .entry(method.parse())
+            .or_insert(HashMap::new());
+        let set = routes.insert(path.to_string(), Arc::new(RwLock::new(action.parse())));
+
 
         self
     }
@@ -104,8 +117,11 @@ impl<T: MiddlewareMethod> Router<T> {
         &self,
         method: String,
         path: String,
-    ) -> Result<(Arc<Mutex<Session<T>>>, HashMap<String, String>), Error> {
-        let routes = self.routes.get(&method.parse());
+    ) -> Result<(Arc<RwLock<Session<T>>>, HashMap<String, String>), Error> {
+        let self_rw = self.inner.clone();
+        let self_ref = self_rw.read().unwrap();
+
+        let routes = self_ref.routes.get(&method.parse());
 
         let routes = match routes {
             Some(v) => v,
@@ -159,5 +175,36 @@ impl<T: MiddlewareMethod> Router<T> {
 
     pub fn delete<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
         self.route(Methods::DELETE, path, action)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use server::router::Router;
+    use server::request::Request;
+    use server::response::Response;
+    use server::session::Session;
+    use server::middleware::MiddlewareSession;
+
+    #[test]
+    fn test() {
+        let mut router = Router::new();
+        router.get(
+            "/",
+            |req: &Request, res: &mut Response, mut session: MiddlewareSession| {
+                res.send_file("./static/index.html");
+                session.terminate();
+            },
+        );
+
+        router.get(
+            "/hi",
+            Session::new().then(
+                |req: &Request, res: &mut Response, mut session: MiddlewareSession| {
+                    res.send_file("./static/index.html");
+                    session.terminate();
+                },
+            ),
+        );
     }
 }
