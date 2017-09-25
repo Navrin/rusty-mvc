@@ -57,18 +57,18 @@ impl RouterMethod for Methods {
 //     }
 // }
 
-pub struct InnerRouter<T: MiddlewareMethod> {
-    pub routes: HashMap<Methods, HashMap<String, Arc<RwLock<Session<T>>>>>,
-    pub middlewares: Arc<RwLock<Option<Session<T>>>>,
+pub struct InnerRouter {
+    pub routes: HashMap<Methods, HashMap<String, Arc<RwLock<Session>>>>,
+    pub middlewares: Arc<RwLock<Option<Session>>>,
 }
 
-pub struct Router<T: MiddlewareMethod> {
-    pub inner: Arc<RwLock<InnerRouter<T>>>,
+pub struct Router {
+    pub inner: Arc<RwLock<InnerRouter>>,
 }
 
-impl<T: MiddlewareMethod> Router<T> {
+impl Router {
     /// Creates a new instance of the Router.
-    pub fn new() -> Router<T> {
+    pub fn new() -> Router {
         Router {
             inner: Arc::new(RwLock::new(InnerRouter {
                 routes: HashMap::new(),
@@ -85,9 +85,9 @@ impl<T: MiddlewareMethod> Router<T> {
     /// * `ACTION` as the closure/function that will be called on a successful route.
     ///
     /// *example*: `route("GET", "/dogs", dog_get)`
-    pub fn route<S, P, M>(&mut self, method: M, path: P, action: S) -> &mut Router<T>
+    pub fn route<S, P, M>(&mut self, method: M, path: P, action: S) -> &mut Router
     where
-        S: Sessionable<T>,
+        S: Sessionable,
         P: ToString,
         M: RouterMethod,
     {
@@ -98,7 +98,6 @@ impl<T: MiddlewareMethod> Router<T> {
             .entry(method.parse())
             .or_insert(HashMap::new());
         let set = routes.insert(path.to_string(), Arc::new(RwLock::new(action.parse())));
-
 
         self
     }
@@ -117,7 +116,7 @@ impl<T: MiddlewareMethod> Router<T> {
         &self,
         method: String,
         path: String,
-    ) -> Result<(Arc<RwLock<Session<T>>>, HashMap<String, String>), Error> {
+    ) -> Result<(Arc<RwLock<Session>>, HashMap<String, String>), Error> {
         let self_rw = self.inner.clone();
         let self_ref = self_rw.read().unwrap();
 
@@ -135,8 +134,10 @@ impl<T: MiddlewareMethod> Router<T> {
             let template = route.split('/').collect::<Vec<&str>>();
             let mut params: HashMap<String, String> = HashMap::new();
 
-            if template.iter().zip(&split_path).all(
-                |(templ_seg, path_seg)| {
+            if template
+                .iter()
+                .zip(&split_path)
+                .all(|(templ_seg, path_seg)| {
                     if templ_seg.contains(':') {
                         params.insert(
                             templ_seg.trim_matches(':').to_string(),
@@ -145,8 +146,7 @@ impl<T: MiddlewareMethod> Router<T> {
                         return true;
                     }
                     templ_seg == path_seg
-                },
-            ) {
+                }) {
                 let method_copy = method.clone();
 
                 return Ok((method_copy, params));
@@ -157,54 +157,65 @@ impl<T: MiddlewareMethod> Router<T> {
     }
 
     /// # Shorthand methods. .get instead of .route("GET")
-    pub fn get<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
+    pub fn get<T: MiddlewareMethod, E: Sessionable, S: ToString>(
+        &mut self,
+        path: S,
+        action: E,
+    ) -> &mut Router {
         self.route(Methods::GET, path, action)
     }
 
-    pub fn post<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
+    pub fn post<T: MiddlewareMethod, E: Sessionable, S: ToString>(
+        &mut self,
+        path: S,
+        action: E,
+    ) -> &mut Router {
         self.route(Methods::POST, path, action)
     }
 
-    pub fn put<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
+    pub fn put<T: MiddlewareMethod, E: Sessionable, S: ToString>(
+        &mut self,
+        path: S,
+        action: E,
+    ) -> &mut Router {
         self.route(Methods::PUT, path, action)
     }
 
-    pub fn patch<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
+    pub fn patch<T: MiddlewareMethod, E: Sessionable, S: ToString>(
+        &mut self,
+        path: S,
+        action: E,
+    ) -> &mut Router {
         self.route(Methods::PATCH, path, action)
     }
 
-    pub fn delete<E: Sessionable<T>, S: ToString>(&mut self, path: S, action: E) -> &mut Router<T> {
+    pub fn delete<T: MiddlewareMethod, E: Sessionable, S: ToString>(
+        &mut self,
+        path: S,
+        action: E,
+    ) -> &mut Router {
         self.route(Methods::DELETE, path, action)
     }
 }
 
-#[cfg(test)]
-mod test {
-    use server::router::Router;
-    use server::request::Request;
-    use server::response::Response;
-    use server::session::Session;
-    use server::middleware::MiddlewareSession;
+#[test]
+fn test() {
+    let mut router = Router::new();
+    router.get(
+        "/",
+        |req: &Request, res: &mut Response, mut session: MiddlewareSession| {
+            res.send_file("./static/index.html");
+            session.terminate();
+        },
+    );
 
-    #[test]
-    fn test() {
-        let mut router = Router::new();
-        router.get(
-            "/",
-            |req: &Request, res: &mut Response, mut session: MiddlewareSession| {
-                res.send_file("./static/index.html");
-                session.terminate();
-            },
-        );
-
-        router.get(
-            "/hi",
-            Session::new().then(
-                |req: &Request, res: &mut Response, mut session: MiddlewareSession| {
-                    res.send_file("./static/index.html");
-                    session.terminate();
-                },
-            ),
-        );
-    }
+    // router.get(
+    //     "/hi",
+    //     Session::new().then(
+    //         |req: &Request, res: &mut Response, mut session: MiddlewareSession| {
+    //             res.send_file("./static/index.html");
+    //             session.terminate();
+    //         },
+    //     ),
+    // );
 }

@@ -1,17 +1,33 @@
 use server::request::Request;
 use server::response::Response;
-use std::sync::mpsc::{Sender};
+use std::sync::mpsc::Sender;
 
 pub trait MiddlewareMethod: Send + Sync + 'static {
     fn call(&self, &Request, &mut Response, MiddlewareSession) -> ();
 }
 
-impl<T> MiddlewareMethod for T 
-where 
+impl<T> MiddlewareMethod for T
+where
     T: Fn(&Request, &mut Response, MiddlewareSession) -> () + Send + Sync + 'static,
 {
-    fn call(&self, request: &Request, mut response: &mut Response, session: MiddlewareSession) -> () {
+    fn call(
+        &self,
+        request: &Request,
+        mut response: &mut Response,
+        session: MiddlewareSession,
+    ) -> () {
         (&self)(request, response, session);
+    }
+}
+
+impl MiddlewareMethod for Box<MiddlewareMethod> {
+    fn call(
+        &self,
+        request: &Request,
+        mut response: &mut Response,
+        session: MiddlewareSession,
+    ) -> () {
+        (**self).call(request, response, session);
     }
 }
 
@@ -28,9 +44,7 @@ pub struct MiddlewareSession {
 
 impl MiddlewareSession {
     pub fn new(invoker: Sender<bool>) -> MiddlewareSession {
-        MiddlewareSession {
-            invoker
-        }
+        MiddlewareSession { invoker }
     }
 
     pub fn next(&mut self) {

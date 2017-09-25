@@ -19,16 +19,16 @@ use self::response::Response;
 use self::middleware::{MiddlewareMethod, MiddlewareSession};
 use self::session::Session;
 
-pub struct ServerInner<T: MiddlewareMethod> {
-    inner_routers: RwLock<HashMap<String, Router<T>>>,
+pub struct ServerInner {
+    inner_routers: RwLock<HashMap<String, Router>>,
 }
 
-pub struct Server<T: MiddlewareMethod> {
-    inner: Arc<ServerInner<T>>,
+pub struct Server {
+    inner: Arc<ServerInner>,
 }
 
-impl<T: MiddlewareMethod> Server<T> {
-    pub fn new() -> Server<T> {
+impl Server {
+    pub fn new() -> Server {
         Server {
             inner: Arc::new(ServerInner {
                 inner_routers: RwLock::new(HashMap::new()),
@@ -37,7 +37,7 @@ impl<T: MiddlewareMethod> Server<T> {
     }
 
     /// Registers a new router for the server.
-    pub fn register<S: ToString>(&mut self, path: S, router: Router<T>) -> &mut Server<T> {
+    pub fn register<S: ToString>(&mut self, path: S, router: Router) -> &mut Server {
         let inner = self.inner.clone();
         let mut routers = inner.inner_routers.write().expect("Could not lock!");
         let empty_path = "/".to_string();
@@ -90,7 +90,7 @@ impl<T: MiddlewareMethod> Server<T> {
         Ok(())
     }
 
-    fn find_middlewares(&self, path: &String) -> Option<Arc<RwLock<Option<Session<T>>>>> {
+    fn find_middlewares(&self, path: &String) -> Option<Arc<RwLock<Option<Session>>>> {
         let inner = self.inner.clone();
         let inner = inner.inner_routers.try_read();
         let routers = match inner {
@@ -105,7 +105,7 @@ impl<T: MiddlewareMethod> Server<T> {
 
             let routing = routing.to_string();
             if path.trim_left().starts_with(&routing) {
-                let middlewares =  router_ref.middlewares.clone();
+                let middlewares = router_ref.middlewares.clone();
                 return Some(middlewares);
             }
         }
@@ -118,7 +118,7 @@ impl<T: MiddlewareMethod> Server<T> {
         &self,
         method: &String,
         path: &String,
-    ) -> Result<(Arc<RwLock<Session<T>>>, HashMap<String, String>), Error> {
+    ) -> Result<(Arc<RwLock<Session>>, HashMap<String, String>), Error> {
         let inner = self.inner.clone();
         let inner = inner.inner_routers.try_read();
         let routers = match inner {
